@@ -7,7 +7,7 @@
 # Studio toolsets (v110_xp).
 # - it is the version that supports the command string(TIMESTAMP ...)
 # ... set to 2.8.12 (< 2.8.12 has been deprecated)
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.10)
 
 # Note: geogram.cmake defines GEOGRAM_WITH_VORPALINE
 # that we could have used instead,
