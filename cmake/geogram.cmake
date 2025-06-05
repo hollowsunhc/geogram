@@ -87,49 +87,56 @@ endif()
 
 ##############################################################################
 
-# RELATIVE_OUTPUT_DIR: Binary build directory relative to source directory
-# Since the build tree is a subdirectory of the source tree, it is
-#  found by replacing the source dir with an empty string in the bin dir.
+# Use CMAKE_CFG_INTDIR for multi-config generator subdirectories (like Debug, Release)
+# This is a generator expression placeholder that CMake resolves correctly.
+# For single-config, it's often just "." or empty.
 
-string(REPLACE ${CMAKE_SOURCE_DIR} "" RELATIVE_OUTPUT_DIR ${CMAKE_BINARY_DIR})
+# For paths intended for link_directories, we need them to be absolute or
+# correctly relative to where the linker is run from.
+# It's generally better to use target_link_directories with absolute paths
+# or paths derived from target properties.
 
-# RELATIVE_BIN_DIR
-# RELATIVE_LIB_DIR
-#  Directories where libraries and executables are generated, relative to
-# source directory. These variables are to be used as an input (e.g., link
-# path, or path to find GOMGEN executable)
-#
-# RELATIVE_BIN_OUTPUT_DIR
-# RELATIVE_LIB_OUTPUT_DIR
-#  Directory where libraries and executables are generated as specified
-# as an output (does not include configuration name under MSVC, because
-# MSVC adds it automatically, thus it would be there twice if we add it).
-# This is where plugins are supposed to copy their generated DLL's/so's.
-#
-# Note: Ideally one should use the generator expressions TARGET_FILE_DIR
-# and TARGET_RUNTIME_DLLS to copy runtime dependencies as a post-build
-# action. See for example:
-# https://cmake.org/cmake/help/latest/manual/cmake-generator-expressions.7.html#genex:TARGET_RUNTIME_DLLS
-#
-# 07/07/2022 replaced "if(WIN32 AND GENERATOR_IS_MULTI_CONFIG)" with
-# "if(WIN32)" in test above (was breaking compilation of Graphite).
+# We can define where libraries will be PLACED using CMAKE_LIBRARY_OUTPUT_DIRECTORY.
+# The link_directories command should then point to these *output* locations.
 
-if(WIN32 AND NOT(CMAKE_GENERATOR STREQUAL "Ninja"))
-    set(MSVC_CONFIG \$\(Configuration\))
-    set(RELATIVE_BIN_DIR ${RELATIVE_OUTPUT_DIR}/bin/${MSVC_CONFIG}/)
-    set(RELATIVE_LIB_DIR ${RELATIVE_OUTPUT_DIR}/lib/${MSVC_CONFIG}/)
-else()
-    set(RELATIVE_BIN_DIR ${RELATIVE_OUTPUT_DIR}/bin/)
-    set(RELATIVE_LIB_DIR ${RELATIVE_OUTPUT_DIR}/lib/)
+set(geogram_actual_lib_output_dir "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+if(CMAKE_CFG_INTDIR AND NOT CMAKE_CFG_INTDIR STREQUAL ".")
+   # For multi-config generators, CMAKE_LIBRARY_OUTPUT_DIRECTORY might not include the config
+   # but the actual libraries land in <output_dir>/<config>.
+   # CMAKE_RUNTIME_OUTPUT_DIRECTORY and CMAKE_ARCHIVE_OUTPUT_DIRECTORY already handle this.
+   # If we are constructing a path for link_directories, we might need to add the config.
+   # However, modern CMake often handles this if targets are linked.
+   # Let's assume CMAKE_LIBRARY_OUTPUT_DIRECTORY is already config-aware if needed,
+   # or that target linking will resolve paths correctly.
+   # For direct link_directories, we might use:
+   # set(geogram_link_lib_dir "${CMAKE_BINARY_DIR}/lib/${CMAKE_CFG_INTDIR}")
+   # but CMAKE_LIBRARY_OUTPUT_DIRECTORY is usually the better source.
+   # If CMAKE_LIBRARY_OUTPUT_DIRECTORY is just "${CMAKE_BINARY_DIR}/lib",
+   # then for multi-config we need to append the config for link_directories.
+
+   # Let's be more explicit for link_directories for multi-config
+   if(CMAKE_GENERATOR_IS_MULTI_CONFIG)
+      set(PROJECT_CONFIGURABLE_LIB_DIR "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${CMAKE_CFG_INTDIR}")
+   else()
+      set(PROJECT_CONFIGURABLE_LIB_DIR "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+   endif()
+
+else() # Single-config or CMAKE_CFG_INTDIR is "."
+   set(PROJECT_CONFIGURABLE_LIB_DIR "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 endif()
-
-set(RELATIVE_BIN_OUTPUT_DIR ${RELATIVE_OUTPUT_DIR}/bin/)
-set(RELATIVE_LIB_OUTPUT_DIR ${RELATIVE_OUTPUT_DIR}/lib/)
 
 ##############################################################################
 
 include_directories(${GEOGRAM_SOURCE_DIR}/src/lib)
 include_directories(${GEOGRAM_SOURCE_DIR}/src/lib/geogram_gfx/third_party/)
-link_directories(${GEOGRAM_SOURCE_DIR}/${RELATIVE_LIB_DIR})
+link_directories("${PROJECT_CONFIGURABLE_LIB_DIR}")
+
+# It's even better to avoid global link_directories and use
+# target_link_directories(my_target PRIVATE "${PROJECT_CONFIGURABLE_LIB_DIR}")
+# or even better, link against imported targets or targets built within the project.
+# For example, if 'geogram' is a library target built by this project:
+# target_link_libraries(vorpastat PRIVATE geogram)
+# And CMake will figure out the library path for geogram.
+# The global link_directories is an older practice.
 
 ##############################################################################
